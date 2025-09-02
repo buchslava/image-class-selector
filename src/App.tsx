@@ -19,26 +19,60 @@ function App() {
 
   const loadImages = async () => {
     if (isTauri) {
-      // Tauri environment - use native file dialog
+      // Tauri environment - use native folder dialog and recursive search
       try {
         const { open } = await import("@tauri-apps/plugin-dialog");
-        const { readFile } = await import("@tauri-apps/plugin-fs");
+        const { readFile, readDir } = await import("@tauri-apps/plugin-fs");
         
-        console.log("Opening file dialog...");
+        console.log("Opening folder dialog...");
         const selected = await open({
-          multiple: true,
-          filters: [
-            {
-              name: "Images",
-              extensions: ["jpg", "jpeg", "png"],
-            },
-          ],
+          directory: true,
+          multiple: false,
         });
         
-        console.log("File dialog result:", selected);
+        console.log("Folder dialog result:", selected);
 
-        if (selected && Array.isArray(selected)) {
-          const imagePromises = selected.map(async (filePath) => {
+        if (selected && !Array.isArray(selected)) {
+          const folderPath = selected;
+          console.log("Selected folder:", folderPath);
+          
+          // Recursively find all image files
+          const imageFiles: string[] = [];
+          
+          const findImagesRecursively = async (dirPath: string): Promise<void> => {
+            try {
+              const entries = await readDir(dirPath);
+              
+              for (const entry of entries) {
+                const fullPath = `${dirPath}/${entry.name}`;
+                
+                if (entry.children) {
+                  // It's a directory, recurse into it
+                  await findImagesRecursively(fullPath);
+                } else {
+                  // It's a file, check if it's an image
+                  const extension = entry.name.split('.').pop()?.toLowerCase();
+                  if (extension === 'jpg' || extension === 'jpeg' || extension === 'png') {
+                    imageFiles.push(fullPath);
+                  }
+                }
+              }
+            } catch (error) {
+              console.error(`Error reading directory ${dirPath}:`, error);
+            }
+          };
+          
+          // Start recursive search
+          await findImagesRecursively(folderPath);
+          console.log(`Found ${imageFiles.length} image files`);
+          
+          if (imageFiles.length === 0) {
+            message.warning("No image files found in the selected folder");
+            return;
+          }
+          
+          // Load all found images
+          const imagePromises = imageFiles.map(async (filePath) => {
             try {
               // Read the file using Tauri's file system API
               const fileData = await readFile(filePath);
@@ -68,7 +102,7 @@ function App() {
           if (loadedImages.length > 0) {
             setSelectedImage(loadedImages[0]);
           }
-          message.success(`Loaded ${loadedImages.length} images`);
+          message.success(`Loaded ${loadedImages.length} images from folder`);
         }
       } catch (error) {
         console.error("Error loading images:", error);
@@ -76,7 +110,7 @@ function App() {
       }
     } else {
       // Web environment - show message to use file input
-      message.info("Please use the file input below to select images for web testing");
+      message.info("Please use the file input below to select multiple images for web testing");
     }
   };
 
@@ -84,15 +118,35 @@ function App() {
     const { fileList } = info;
     
     if (fileList.length > 0) {
-      const imagePromises = fileList.map(async (file: any) => {
+      // Filter for image files only
+      const imageFiles = fileList.filter((file: any) => {
+        const fileName = file.name.toLowerCase();
+        return fileName.endsWith('.jpg') || fileName.endsWith('.jpeg') || fileName.endsWith('.png');
+      });
+      
+      if (imageFiles.length === 0) {
+        message.warning("No image files found in the selected folder. Please select a folder containing JPEG or PNG files.");
+        return;
+      }
+      
+      if (imageFiles.length < fileList.length) {
+        message.info(`Found ${imageFiles.length} image files out of ${fileList.length} files in folder`);
+      }
+      
+      const imagePromises = imageFiles.map(async (file: any) => {
         return new Promise<ImageFile>((resolve) => {
           const reader = new FileReader();
           reader.onload = (e) => {
+            // Use the full path as the unique identifier for webkitdirectory
+            const fullPath = file.webkitRelativePath || file.name;
             resolve({
-              path: file.name,
+              path: fullPath,
               name: file.name,
               data: e.target?.result as string,
             });
+          };
+          reader.onerror = () => {
+            console.error(`Error reading file: ${file.name}`);
           };
           reader.readAsDataURL(file.originFileObj);
         });
@@ -103,7 +157,10 @@ function App() {
         if (loadedImages.length > 0) {
           setSelectedImage(loadedImages[0]);
         }
-        message.success(`Loaded ${loadedImages.length} images`);
+        message.success(`Loaded ${loadedImages.length} images from folder`);
+      }).catch((error) => {
+        console.error("Error loading images:", error);
+        message.error("Failed to load some images");
       });
     }
   };
@@ -186,26 +243,33 @@ function App() {
               block
               style={{ marginBottom: "16px" }}
             >
-              {isTauri ? "Load Images" : "Load Images (Desktop Only)"}
+              {isTauri ? "Select Folder" : "Select Folder (Desktop Only)"}
             </Button>
             
             {!isTauri && (
-              <Upload
-                multiple
-                accept="image/*"
-                showUploadList={false}
-                beforeUpload={() => false}
-                onChange={handleFileUpload}
-                style={{ width: "100%" }}
-              >
-                <Button
-                  icon={<UploadOutlined />}
-                  block
-                  style={{ marginBottom: "16px" }}
+              <div>
+                <Upload
+                  multiple
+                  accept="image/*"
+                  showUploadList={false}
+                  beforeUpload={() => false}
+                  onChange={handleFileUpload}
+                  style={{ width: "100%" }}
+                  directory={true}
+                  webkitdirectory={true}
                 >
-                  Upload Images (Web)
-                </Button>
-              </Upload>
+                  <Button
+                    icon={<UploadOutlined />}
+                    block
+                    style={{ marginBottom: "16px" }}
+                  >
+                    Select Folder (Web)
+                  </Button>
+                </Upload>
+                <div style={{ fontSize: "12px", color: "#666", textAlign: "center", marginBottom: "16px" }}>
+                  Select a folder containing images
+                </div>
+              </div>
             )}
           </div>
           
@@ -353,7 +417,7 @@ function App() {
               <Title level={3} type="secondary">
                 No Image Selected
               </Title>
-              <p>Load some images to get started</p>
+              <p>Select a folder to load images</p>
             </div>
           )}
         </Content>
