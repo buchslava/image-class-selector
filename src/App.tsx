@@ -15,7 +15,7 @@ function App() {
   const [images, setImages] = useState<ImageFile[]>([]);
   const [selectedImage, setSelectedImage] = useState<ImageFile | null>(null);
   const [collapsed, setCollapsed] = useState(false);
-  const [rectangles, setRectangles] = useState<Rectangle[]>([]);
+  const [rectanglesPerImage, setRectanglesPerImage] = useState<Record<string, Rectangle[]>>({});
 
   const loadImages = async () => {
     if (isTauri) {
@@ -109,16 +109,33 @@ function App() {
   };
 
   const handleRectanglesChange = (newRectangles: Rectangle[]) => {
-    setRectangles(newRectangles);
+    if (selectedImage) {
+      setRectanglesPerImage(prev => ({
+        ...prev,
+        [selectedImage.path]: newRectangles
+      }));
+    }
   };
 
   const clearAllRectangles = () => {
-    setRectangles([]);
-    message.success("All rectangles cleared");
+    if (selectedImage) {
+      setRectanglesPerImage(prev => ({
+        ...prev,
+        [selectedImage.path]: []
+      }));
+      message.success("All rectangles cleared for this image");
+    }
+  };
+
+  const clearAllImagesRectangles = () => {
+    setRectanglesPerImage({});
+    message.success("All rectangles cleared for all images");
   };
 
   const exportRectangles = () => {
-    if (rectangles.length === 0) {
+    const currentRectangles = selectedImage ? rectanglesPerImage[selectedImage.path] || [] : [];
+    
+    if (currentRectangles.length === 0) {
       message.warning("No rectangles to export");
       return;
     }
@@ -126,7 +143,7 @@ function App() {
     const exportData: ExportData = {
       imageName: selectedImage?.name || "unknown",
       imagePath: selectedImage?.path || "",
-      rectangles: rectangles,
+      rectangles: currentRectangles,
       exportDate: new Date().toISOString(),
     };
 
@@ -209,6 +226,7 @@ function App() {
                       borderRadius: "6px",
                       padding: "4px",
                       transition: "all 0.3s",
+                      position: "relative",
                     }}
                     onClick={() => setSelectedImage(image)}
                   >
@@ -237,6 +255,28 @@ function App() {
                         {image.name}
                       </div>
                     )}
+                    {/* Rectangle count indicator */}
+                    {(rectanglesPerImage[image.path] || []).length > 0 && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: "4px",
+                          right: "4px",
+                          background: "#52c41a",
+                          color: "white",
+                          borderRadius: "50%",
+                          width: "20px",
+                          height: "20px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "10px",
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {(rectanglesPerImage[image.path] || []).length}
+                      </div>
+                    )}
                   </div>
                 </Col>
               ))}
@@ -257,25 +297,35 @@ function App() {
                   <Title level={4} style={{ margin: 0 }}>
                     {selectedImage.name}
                   </Title>
-                  {rectangles.length > 0 && (
-                    <span className="rectangle-count">
-                      {rectangles.length} rectangle{rectangles.length !== 1 ? 's' : ''}
-                    </span>
-                  )}
+                  {(() => {
+                    const currentRectangles = rectanglesPerImage[selectedImage.path] || [];
+                    return currentRectangles.length > 0 && (
+                      <span className="rectangle-count">
+                        {currentRectangles.length} rectangle{currentRectangles.length !== 1 ? 's' : ''}
+                      </span>
+                    );
+                  })()}
                 </div>
                 <Space>
                   <Button
                     icon={<DeleteOutlined />}
                     onClick={clearAllRectangles}
-                    disabled={rectangles.length === 0}
+                    disabled={(rectanglesPerImage[selectedImage.path] || []).length === 0}
                   >
-                    Clear All ({rectangles.length})
+                    Clear This ({rectanglesPerImage[selectedImage.path]?.length || 0})
+                  </Button>
+                  <Button
+                    icon={<DeleteOutlined />}
+                    onClick={clearAllImagesRectangles}
+                    disabled={Object.keys(rectanglesPerImage).length === 0}
+                  >
+                    Clear All Images
                   </Button>
                   <Button
                     type="primary"
                     icon={<DownloadOutlined />}
                     onClick={exportRectangles}
-                    disabled={rectangles.length === 0}
+                    disabled={(rectanglesPerImage[selectedImage.path] || []).length === 0}
                   >
                     Export
                   </Button>
@@ -284,7 +334,7 @@ function App() {
               <ImageCanvas
                 imageSrc={selectedImage.data}
                 imageName={selectedImage.name}
-                rectangles={rectangles}
+                rectangles={rectanglesPerImage[selectedImage.path] || []}
                 onRectanglesChange={handleRectanglesChange}
               />
             </div>
