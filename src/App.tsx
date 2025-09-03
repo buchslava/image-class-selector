@@ -2,11 +2,11 @@ import { useState } from "react";
 import { Layout, Button, Image, Row, Col, Typography, message, Space } from "antd";
 import { FolderOpenOutlined, DeleteOutlined, DownloadOutlined } from "@ant-design/icons";
 import ImageCanvas from "./components/ImageCanvas";
-import { ImageFile, Rectangle, ExportData } from "./types";
+import { ImageFile, Rectangle } from "./types";
 import { saveYOLOTxtFile, getYOLOTxtPath, exportAllYOLO, loadYOLOAnnotations } from "./utils/yoloExport";
 import "./App.css";
 
-const { Header, Content, Sider } = Layout;
+const { Content, Sider } = Layout;
 const { Title } = Typography;
 
 function App() {
@@ -188,35 +188,7 @@ function App() {
     message.success("All rectangles cleared for all images");
   };
 
-  const exportRectangles = () => {
-    const currentRectangles = selectedImage ? rectanglesPerImage[selectedImage.path] || [] : [];
-    
-    if (currentRectangles.length === 0) {
-      message.warning("No rectangles to export");
-      return;
-    }
 
-    const exportData: ExportData = {
-      imageName: selectedImage?.name || "unknown",
-      imagePath: selectedImage?.path || "",
-      rectangles: currentRectangles,
-      exportDate: new Date().toISOString(),
-    };
-
-    const dataStr = JSON.stringify(exportData, null, 2);
-    const dataBlob = new Blob([dataStr], { type: "application/json" });
-    const url = URL.createObjectURL(dataBlob);
-    
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${selectedImage?.name || "rectangles"}_annotations.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    
-    message.success("Rectangles exported successfully");
-  };
 
   const exportYOLO = async () => {
     const currentRectangles = selectedImage ? rectanglesPerImage[selectedImage.path] || [] : [];
@@ -277,11 +249,6 @@ function App() {
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
-      <Header style={{ display: "flex", alignItems: "center", background: "#001529" }}>
-        <Title level={3} style={{ color: "white", margin: 0 }}>
-          Image Class Selector
-        </Title>
-      </Header>
       
       <Layout>
         <Sider
@@ -381,25 +348,31 @@ function App() {
         <Content style={{ padding: "24px", background: "#f0f2f5" }}>
           {selectedImage ? (
             <div>
+              {/* Filename section */}
               <div style={{ 
                 display: "flex", 
-                justifyContent: "space-between", 
                 alignItems: "center", 
+                marginBottom: "12px" 
+              }}>
+                <Title level={5} style={{ margin: 0, fontSize: "14px", color: "#666" }}>
+                  {selectedImage.name}
+                </Title>
+                {(() => {
+                  const currentRectangles = rectanglesPerImage[selectedImage.path] || [];
+                  return currentRectangles.length > 0 && (
+                    <span className="rectangle-count" style={{ marginLeft: "8px" }}>
+                      {currentRectangles.length} rectangle{currentRectangles.length !== 1 ? 's' : ''}
+                    </span>
+                  );
+                })()}
+              </div>
+              
+              {/* Buttons section */}
+              <div style={{ 
+                display: "flex", 
+                justifyContent: "flex-end", 
                 marginBottom: "16px" 
               }}>
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <Title level={4} style={{ margin: 0 }}>
-                    {selectedImage.name}
-                  </Title>
-                  {(() => {
-                    const currentRectangles = rectanglesPerImage[selectedImage.path] || [];
-                    return currentRectangles.length > 0 && (
-                      <span className="rectangle-count">
-                        {currentRectangles.length} rectangle{currentRectangles.length !== 1 ? 's' : ''}
-                      </span>
-                    );
-                  })()}
-                </div>
                 <Space>
                   <Button
                     icon={<DeleteOutlined />}
@@ -415,13 +388,7 @@ function App() {
                   >
                     Clear All Images
                   </Button>
-                  <Button
-                    icon={<DownloadOutlined />}
-                    onClick={exportRectangles}
-                    disabled={(rectanglesPerImage[selectedImage.path] || []).length === 0}
-                  >
-                    Export JSON
-                  </Button>
+
                   <Button
                     type="primary"
                     icon={<DownloadOutlined />}

@@ -28,6 +28,28 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
 
+  // Calculate stage size based on available space and image dimensions
+  const calculateStageSize = (imgWidth: number, imgHeight: number) => {
+    // Get available space (subtract padding and margins)
+    const availableWidth = window.innerWidth - 400; // Account for sidebar
+    const availableHeight = window.innerHeight - 200; // Account for header and padding
+    
+    const maxWidth = Math.min(availableWidth, 1200); // Cap at 1200px
+    const maxHeight = Math.min(availableHeight, 800); // Cap at 800px
+    
+    const aspectRatio = imgWidth / imgHeight;
+    
+    let width = maxWidth;
+    let height = maxWidth / aspectRatio;
+    
+    if (height > maxHeight) {
+      height = maxHeight;
+      width = maxHeight * aspectRatio;
+    }
+    
+    return { width, height };
+  };
+
   // Load image
   useEffect(() => {
     console.log('Loading image:', imageSrc);
@@ -38,27 +60,33 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
       setImage(img);
       setImageDimensions({ width: img.width, height: img.height });
       
-      // Calculate stage size to fit image while maintaining aspect ratio
-      const maxWidth = 800;
-      const maxHeight = 600;
-      const aspectRatio = img.width / img.height;
-      
-      let width = maxWidth;
-      let height = maxWidth / aspectRatio;
-      
-      if (height > maxHeight) {
-        height = maxHeight;
-        width = maxHeight * aspectRatio;
-      }
-      
-      console.log('Stage size set to:', width, 'x', height);
-      setStageSize({ width, height });
+      const newStageSize = calculateStageSize(img.width, img.height);
+      console.log('Stage size set to:', newStageSize.width, 'x', newStageSize.height);
+      setStageSize(newStageSize);
     };
     img.onerror = (error) => {
       console.error('Error loading image:', error);
     };
     img.src = imageSrc;
   }, [imageSrc]);
+
+  // Handle window resize
+  useEffect(() => {
+    const handleResize = () => {
+      if (imageDimensions.width > 0 && imageDimensions.height > 0) {
+        const newStageSize = calculateStageSize(imageDimensions.width, imageDimensions.height);
+        console.log('Window resized, new stage size:', newStageSize.width, 'x', newStageSize.height);
+        setStageSize(newStageSize);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    
+    // Cleanup
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [imageDimensions]);
 
   // Coordinate transformation functions
   const stageToImageCoords = (stageX: number, stageY: number) => {
@@ -313,14 +341,23 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
   }
 
   return (
-    <div style={{ textAlign: 'center' }}>
-      <h3 style={{ marginBottom: '16px' }}>{imageName}</h3>
+    <div style={{ 
+      display: 'flex', 
+      flexDirection: 'column', 
+      alignItems: 'center',
+      width: '100%',
+      height: '100%'
+    }}>
       <div style={{ 
-        display: 'inline-block',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
         border: '1px solid #d9d9d9',
         borderRadius: '6px',
         overflow: 'hidden',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+        maxWidth: '100%',
+        maxHeight: '100%'
       }}>
         <Stage
           ref={stageRef}
@@ -445,47 +482,6 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
             />
           </Layer>
         </Stage>
-      </div>
-      <div className="canvas-instructions" style={{ maxWidth: stageSize.width, margin: '16px auto 0' }}>
-        <p><strong>Instructions:</strong></p>
-        <ul>
-          <li>Click and drag on the image to create a rectangle</li>
-          <li>Click on a rectangle to select it (shows resize handles)</li>
-          <li>Drag the resize handles to resize selected rectangles</li>
-          <li>Drag rectangles to move them</li>
-          <li>Double-click a rectangle to delete it</li>
-          <li>You can create multiple rectangles on the same image</li>
-        </ul>
-        {isDrawing && (
-          <p style={{ color: '#007bff', fontWeight: 'bold', marginTop: '8px' }}>
-            🎯 Drawing mode: Release mouse to finish rectangle
-          </p>
-        )}
-        {selectedId && (
-          <p style={{ color: '#28a745', fontWeight: 'bold', marginTop: '8px' }}>
-            ✅ Rectangle selected: Click elsewhere to deselect
-          </p>
-        )}
-        <button 
-          onClick={() => {
-            console.log('Manual transformer test');
-            const layer = layerRef.current;
-            const tr = trRef.current;
-            console.log('Manual test - layer:', layer, 'tr:', tr);
-            if (layer && tr && selectedId) {
-              const selectedNode = layer.findOne(`#${selectedId}`);
-              console.log('Manual test - selected node:', selectedNode);
-              if (selectedNode) {
-                tr.nodes([selectedNode]);
-                tr.getLayer()?.batchDraw();
-                console.log('Manual transformer attached');
-              }
-            }
-          }}
-          style={{ marginTop: '8px', padding: '4px 8px' }}
-        >
-          Test Transformer
-        </button>
       </div>
     </div>
   );
