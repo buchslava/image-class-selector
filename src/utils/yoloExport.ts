@@ -1,4 +1,4 @@
-import { Rectangle } from '../types';
+import { Rectangle, ExportResult, BatchExportResult } from '../types';
 
 export const getYOLOTxtPath = (imagePath: string): string => {
   // Replace image extension with .txt
@@ -9,11 +9,11 @@ export const saveYOLOTxtFile = async (
   rectangles: Rectangle[],
   imageWidth: number,
   imageHeight: number,
-  outputPath: string,
+  imagePath: string,
   classId: number = 0
-): Promise<void> => {
+): Promise<ExportResult> => {
   console.log("=== TypeScript YOLO Export Start ===");
-  console.log("Output path:", outputPath);
+  console.log("Image path:", imagePath);
   console.log("Image dimensions:", imageWidth, "x", imageHeight);
   console.log("Number of rectangles:", rectangles.length);
   console.log("Class ID:", classId);
@@ -21,9 +21,12 @@ export const saveYOLOTxtFile = async (
   // Use Rust function for Tauri environment
   const { invoke } = await import('@tauri-apps/api/core');
   
-  const request = {
-    image_path: outputPath,
-    rectangles: rectangles.map(rect => ({
+  // Validate rectangles have all required fields
+  const validatedRectangles = rectangles.map(rect => {
+    if (rect.strokeWidth === undefined) {
+      console.warn(`Rectangle ${rect.id} missing strokeWidth, using default value 2`);
+    }
+    return {
       id: rect.id,
       x: rect.x,
       y: rect.y,
@@ -31,9 +34,14 @@ export const saveYOLOTxtFile = async (
       height: rect.height,
       fill: rect.fill,
       stroke: rect.stroke,
-      stroke_width: rect.strokeWidth,
+      stroke_width: rect.strokeWidth || 2, // Provide default if missing
       draggable: rect.draggable,
-    })),
+    };
+  });
+
+  const request = {
+    image_path: imagePath,
+    rectangles: validatedRectangles,
     image_width: imageWidth,
     image_height: imageHeight,
     class_id: classId,
@@ -42,9 +50,10 @@ export const saveYOLOTxtFile = async (
   console.log("Sending request to Rust:", request);
   
   try {
-    const result = await invoke('export_rectangles_to_yolo', { request });
+    const result = await invoke('export_rectangles_to_yolo', { request }) as ExportResult;
     console.log("Rust returned:", result);
     console.log("=== TypeScript YOLO Export Success ===");
+    return result;
   } catch (error) {
     console.error("=== TypeScript YOLO Export Error ===");
     console.error("Error calling Rust function:", error);
@@ -60,37 +69,48 @@ export const exportAllYOLO = async (
     imageHeight: number;
     classId?: number;
   }>
-): Promise<void> => {
+): Promise<BatchExportResult> => {
   console.log("=== TypeScript Batch YOLO Export Start ===");
   console.log("Number of images to export:", exports.length);
   
   // Use Rust batch function for Tauri environment
   const { invoke } = await import('@tauri-apps/api/core');
   
-  const requests = exports.map(exportData => ({
-    image_path: exportData.imagePath,
-    rectangles: exportData.rectangles.map(rect => ({
-      id: rect.id,
-      x: rect.x,
-      y: rect.y,
-      width: rect.width,
-      height: rect.height,
-      fill: rect.fill,
-      stroke: rect.stroke,
-      stroke_width: rect.strokeWidth,
-      draggable: rect.draggable,
-    })),
-    image_width: exportData.imageWidth,
-    image_height: exportData.imageHeight,
-    class_id: exportData.classId || 0,
-  }));
+  const requests = exports.map(exportData => {
+    // Validate rectangles have all required fields
+    const validatedRectangles = exportData.rectangles.map(rect => {
+      if (rect.strokeWidth === undefined) {
+        console.warn(`Rectangle ${rect.id} missing strokeWidth, using default value 2`);
+      }
+      return {
+        id: rect.id,
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+        fill: rect.fill,
+        stroke: rect.stroke,
+        stroke_width: rect.strokeWidth || 2, // Provide default if missing
+        draggable: rect.draggable,
+      };
+    });
+    
+    return {
+      image_path: exportData.imagePath,
+      rectangles: validatedRectangles,
+      image_width: exportData.imageWidth,
+      image_height: exportData.imageHeight,
+      class_id: exportData.classId || 0,
+    };
+  });
   
   console.log("Sending batch request to Rust:", requests);
   
   try {
-    const result = await invoke('export_all_rectangles_to_yolo', { requests });
+    const result = await invoke('export_all_rectangles_to_yolo', { requests }) as BatchExportResult;
     console.log("Rust batch returned:", result);
     console.log("=== TypeScript Batch YOLO Export Success ===");
+    return result;
   } catch (error) {
     console.error("=== TypeScript Batch YOLO Export Error ===");
     console.error("Error calling Rust batch function:", error);

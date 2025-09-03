@@ -32,3 +32,19 @@ export interface YOLORectangle {
   width: number; // normalized (0-1)
   height: number; // normalized (0-1)
 }
+
+export interface ExportResult {
+  success: boolean;
+  message: string;
+  file_path?: string;
+  rectangles_processed: number;
+  errors: string[];
+}
+
+export interface BatchExportResult {
+  total_images: number;
+  successful_exports: number;
+  failed_exports: number;
+  results: ExportResult[];
+  summary: string;
+}

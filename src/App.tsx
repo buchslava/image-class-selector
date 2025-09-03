@@ -2,17 +2,17 @@ import { useState } from "react";
 import { Layout, Button, Image, Row, Col, Typography, message, Space } from "antd";
 import { FolderOpenOutlined, DeleteOutlined, DownloadOutlined } from "@ant-design/icons";
 import ImageCanvas from "./components/ImageCanvas";
-import { ImageFile, Rectangle } from "./types";
-import { saveYOLOTxtFile, getYOLOTxtPath, exportAllYOLO, loadYOLOAnnotations } from "./utils/yoloExport";
+import { ImageFile, Rectangle, ExportResult, BatchExportResult } from "./types";
+import { exportAllYOLO, loadYOLOAnnotations } from "./utils/yoloExport";
 import "./App.css";
 
 const { Content, Sider } = Layout;
 const { Title } = Typography;
 
 function App() {
+  const [messageApi, contextHolder] = message.useMessage();
   const [images, setImages] = useState<ImageFile[]>([]);
   const [selectedImage, setSelectedImage] = useState<ImageFile | null>(null);
-  const [collapsed, setCollapsed] = useState(false);
   const [rectanglesPerImage, setRectanglesPerImage] = useState<Record<string, Rectangle[]>>({});
 
   // Helper function to get image dimensions from data URL
@@ -190,35 +190,7 @@ function App() {
 
 
 
-  const exportYOLO = async () => {
-    const currentRectangles = selectedImage ? rectanglesPerImage[selectedImage.path] || [] : [];
-    
-    if (currentRectangles.length === 0) {
-      message.warning("No rectangles to export");
-      return;
-    }
 
-    if (!selectedImage?.originalWidth || !selectedImage?.originalHeight) {
-      message.error("Image dimensions not available");
-      return;
-    }
-
-    try {
-      const txtPath = getYOLOTxtPath(selectedImage.path);
-      await saveYOLOTxtFile(
-        currentRectangles,
-        selectedImage.originalWidth,
-        selectedImage.originalHeight,
-        txtPath,
-        0 // class_id = 0
-      );
-      
-      message.success(`YOLOv8 annotations exported to ${txtPath}`);
-    } catch (error) {
-      console.error("Error exporting YOLO annotations:", error);
-      message.error("Failed to export YOLO annotations");
-    }
-  };
 
   const handleExportAllYOLO = async () => {
     const imagesWithRectangles = images.filter(img => 
@@ -239,22 +211,34 @@ function App() {
         classId: 0,
       }));
 
-      await exportAllYOLO(exports);
-      message.success(`Exported ${exports.length} YOLOv8 annotation files`);
+      const result = await exportAllYOLO(exports);
+      
+      if (result.successful_exports > 0) {
+        
+        // Single message for success
+        if (result.failed_exports > 0) {
+          // Mixed results - show warning
+          messageApi.warning(`${result.summary} (${result.successful_exports} successful, ${result.failed_exports} failed)`);
+        } else {
+          // All successful - show success
+          messageApi.success(result.summary);
+        }
+      } else {
+        messageApi.error(result.summary);
+      }
     } catch (error) {
       console.error("Error in batch YOLO export:", error);
-      message.error("Failed to export YOLO annotations");
+      messageApi.error('Failed to export YOLO annotations');
     }
   };
 
   return (
-    <Layout style={{ minHeight: "100vh" }}>
+    <>
+      {contextHolder}
+      <Layout style={{ minHeight: "100vh" }}>
       
       <Layout>
         <Sider
-          collapsible
-          collapsed={collapsed}
-          onCollapse={setCollapsed}
           width={300}
           style={{ background: "#fff" }}
         >
@@ -278,7 +262,7 @@ function App() {
             >
               <Row gutter={[8, 8]}>
                 {images.map((image, index) => (
-                  <Col span={collapsed ? 24 : 12} key={index}>
+                  <Col span={12} key={index}>
                     <div
                       style={{
                         cursor: "pointer",
@@ -295,14 +279,13 @@ function App() {
                         alt={image.name}
                         style={{
                           width: "100%",
-                          height: collapsed ? "60px" : "80px",
+                          height: "80px",
                           objectFit: "cover",
                           borderRadius: "4px",
                         }}
                         preview={false}
                       />
-                      {!collapsed && (
-                        <div
+                      <div
                           style={{
                             fontSize: "12px",
                             textAlign: "center",
@@ -314,7 +297,6 @@ function App() {
                         >
                           {image.name}
                         </div>
-                      )}
                       {/* Rectangle count indicator */}
                       {(rectanglesPerImage[image.path] || []).length > 0 && (
                         <div
@@ -392,18 +374,10 @@ function App() {
                   <Button
                     type="primary"
                     icon={<DownloadOutlined />}
-                    onClick={exportYOLO}
-                    disabled={(rectanglesPerImage[selectedImage.path] || []).length === 0}
-                  >
-                    Export YOLO
-                  </Button>
-                  <Button
-                    type="primary"
-                    icon={<DownloadOutlined />}
                     onClick={handleExportAllYOLO}
                     disabled={Object.keys(rectanglesPerImage).length === 0}
                   >
-                    Export All YOLO
+                    Export YOLO
                   </Button>
                 </Space>
               </div>
@@ -437,6 +411,7 @@ function App() {
         </Content>
       </Layout>
     </Layout>
+    </>
   );
 }
 

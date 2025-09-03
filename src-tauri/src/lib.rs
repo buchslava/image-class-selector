@@ -1,6 +1,25 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::path::Path;
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ExportResult {
+    success: bool,
+    message: String,
+    file_path: Option<String>,
+    rectangles_processed: usize,
+    errors: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct BatchExportResult {
+    total_images: usize,
+    successful_exports: usize,
+    failed_exports: usize,
+    results: Vec<ExportResult>,
+    summary: String,
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct Rectangle {
@@ -30,7 +49,7 @@ fn greet(name: &str) -> String {
 }
 
 #[tauri::command]
-fn export_rectangles_to_yolo(request: YoloExportRequest) -> Result<String, String> {
+fn export_rectangles_to_yolo(request: YoloExportRequest) -> ExportResult {
     println!("=== YOLO EXPORT START ===");
     println!("Image path: {}", request.image_path);
     println!("Image dimensions: {}x{}", request.image_width, request.image_height);
@@ -51,7 +70,13 @@ fn export_rectangles_to_yolo(request: YoloExportRequest) -> Result<String, Strin
     } else if image_path.ends_with(".png") {
         image_path.replace(".png", ".txt")
     } else {
-        return Err("Unsupported image format".to_string());
+        return ExportResult {
+            success: false,
+            message: "Unsupported image format".to_string(),
+            file_path: None,
+            rectangles_processed: 0,
+            errors: vec!["Unsupported image format".to_string()],
+        };
     };
 
     println!("TXT output path: {}", txt_path);
@@ -84,18 +109,30 @@ fn export_rectangles_to_yolo(request: YoloExportRequest) -> Result<String, Strin
         Ok(_) => {
             println!("=== YOLO EXPORT SUCCESS ===");
             println!("File written successfully to: {}", txt_path);
-            Ok(format!("YOLO annotations exported to: {}", txt_path))
+            ExportResult {
+                success: true,
+                message: format!("YOLO annotations exported successfully"),
+                file_path: Some(txt_path),
+                rectangles_processed: rectangles.len(),
+                errors: Vec::new(),
+            }
         },
         Err(e) => {
             println!("=== YOLO EXPORT ERROR ===");
             println!("Failed to write file: {}", e);
-            Err(format!("Failed to write file: {}", e))
+            ExportResult {
+                success: false,
+                message: format!("Failed to write file: {}", e),
+                file_path: None,
+                rectangles_processed: 0,
+                errors: vec![e.to_string()],
+            }
         }
     }
 }
 
 #[tauri::command]
-fn export_all_rectangles_to_yolo(requests: Vec<YoloExportRequest>) -> Result<String, String> {
+fn export_all_rectangles_to_yolo(requests: Vec<YoloExportRequest>) -> BatchExportResult {
     println!("=== BATCH YOLO EXPORT START ===");
     println!("Number of images to process: {}", requests.len());
     
@@ -105,34 +142,38 @@ fn export_all_rectangles_to_yolo(requests: Vec<YoloExportRequest>) -> Result<Str
 
     for (i, request) in requests.iter().enumerate() {
         println!("Processing image {}: {}", i, request.image_path);
-        match export_rectangles_to_yolo(request.clone()) {
-            Ok(_) => {
-                success_count += 1;
-                println!("Successfully exported image {}", i);
-            },
-            Err(e) => {
-                error_count += 1;
-                println!("Failed to export image {}: {}", i, e);
-                errors.push(e);
-            }
+        let result = export_rectangles_to_yolo(request.clone());
+        if result.success {
+            success_count += 1;
+            println!("Successfully exported image {}", i);
+        } else {
+            error_count += 1;
+            println!("Failed to export image {}: {}", i, result.message);
+            errors.push(result.message);
         }
     }
 
     println!("=== BATCH YOLO EXPORT COMPLETE ===");
     println!("Success: {}, Errors: {}", success_count, error_count);
 
-    if success_count > 0 {
-        let message = if error_count > 0 {
+    let summary = if success_count > 0 {
+        if error_count > 0 {
             format!("Exported {} YOLO annotation files ({} failed)", success_count, error_count)
         } else {
             format!("Successfully exported {} YOLO annotation files", success_count)
-        };
-        println!("Returning success message: {}", message);
-        Ok(message)
+        }
     } else {
-        let error_message = format!("Failed to export any YOLO annotations. Errors: {}", errors.join(", "));
-        println!("Returning error message: {}", error_message);
-        Err(error_message)
+        format!("Failed to export any YOLO annotations. Errors: {}", errors.join(", "))
+    };
+
+    println!("Returning summary: {}", summary);
+    
+    BatchExportResult {
+        total_images: requests.len(),
+        successful_exports: success_count,
+        failed_exports: error_count,
+        results: Vec::new(), // We'll need to collect results from individual exports
+        summary,
     }
 }
 
