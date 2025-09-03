@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Layout, Button, Image, Row, Col, Typography, message, Space } from "antd";
+import { Layout, Button, Image, Row, Col, Typography, message, Space, Select } from "antd";
 import { FolderOpenOutlined, DeleteOutlined, DownloadOutlined } from "@ant-design/icons";
 import ImageCanvas from "./components/ImageCanvas";
 import { ImageFile, Rectangle, ExportResult, BatchExportResult } from "./types";
@@ -14,6 +14,8 @@ function App() {
   const [images, setImages] = useState<ImageFile[]>([]);
   const [selectedImage, setSelectedImage] = useState<ImageFile | null>(null);
   const [rectanglesPerImage, setRectanglesPerImage] = useState<Record<string, Rectangle[]>>({});
+  const [classes, setClasses] = useState<string[]>([]);
+  const [selectedClassId, setSelectedClassId] = useState<number>(0);
 
   // Helper function to get image dimensions from data URL
   const getImageDimensions = (dataUrl: string): Promise<{ width: number; height: number }> => {
@@ -24,6 +26,55 @@ function App() {
       };
       img.src = dataUrl;
     });
+  };
+
+  const loadClasses = async () => {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const { readTextFile } = await import("@tauri-apps/plugin-fs");
+      
+      console.log("Opening file dialog for classes...");
+      const selected = await open({
+        directory: false,
+        multiple: false,
+      });
+      
+      console.log("File dialog result:", selected);
+
+      if (selected && !Array.isArray(selected)) {
+        const filePath = selected;
+        console.log("Selected file:", filePath);
+        
+        try {
+          const content = await readTextFile(filePath);
+          console.log("File content:", content);
+          
+          // Parse each non-empty line as a class name
+          const classNames = content
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line.length > 0);
+          
+          console.log("Parsed classes:", classNames);
+          
+          if (classNames.length === 0) {
+            messageApi.warning("No classes found in the file");
+            return;
+          }
+          
+          setClasses(classNames);
+          setSelectedClassId(0); // Reset to first class
+          messageApi.success(`Loaded ${classNames.length} classes: ${classNames.join(', ')}`);
+          
+        } catch (error) {
+          console.error("Error reading file:", error);
+          messageApi.error("Failed to read the selected file");
+        }
+      }
+    } catch (error) {
+      console.error("Error loading classes:", error);
+      messageApi.error("Failed to open file dialog");
+    }
   };
 
   const loadImages = async () => {
@@ -208,7 +259,7 @@ function App() {
         rectangles: rectanglesPerImage[image.path] || [],
         imageWidth: image.originalWidth,
         imageHeight: image.originalHeight,
-        classId: 0,
+        classId: selectedClassId,
       }));
 
       const result = await exportAllYOLO(exports);
@@ -248,9 +299,17 @@ function App() {
               icon={<FolderOpenOutlined />}
               onClick={loadImages}
               block
-              style={{ marginBottom: "16px" }}
+              style={{ marginBottom: "8px" }}
             >
               Select Folder
+            </Button>
+            <Button
+              icon={<FolderOpenOutlined />}
+              onClick={loadClasses}
+              block
+              style={{ marginBottom: "16px" }}
+            >
+              Load Classes
             </Button>
             
             <div
@@ -352,9 +411,31 @@ function App() {
               {/* Buttons section */}
               <div style={{ 
                 display: "flex", 
-                justifyContent: "flex-end", 
+                justifyContent: "space-between", 
+                alignItems: "center",
                 marginBottom: "16px" 
               }}>
+                {/* Class selector */}
+                <div style={{ display: "flex", alignItems: "center" }}>
+                  <span style={{ marginRight: "8px", fontSize: "14px", color: "#666" }}>
+                    Class:
+                  </span>
+                  <Select
+                    value={selectedClassId}
+                    onChange={setSelectedClassId}
+                    style={{ width: 120 }}
+                    disabled={classes.length === 0}
+                    placeholder="No classes loaded"
+                  >
+                    {classes.map((className, index) => (
+                      <Select.Option key={index} value={index}>
+                        {className} (ID: {index})
+                      </Select.Option>
+                    ))}
+                  </Select>
+                </div>
+                
+                {/* Action buttons */}
                 <Space>
                   <Button
                     icon={<DeleteOutlined />}
