@@ -8,6 +8,8 @@ interface ImageCanvasProps {
   imageName: string;
   rectangles: Rectangle[];
   onRectanglesChange: (rectangles: Rectangle[]) => void;
+  originalWidth?: number;
+  originalHeight?: number;
 }
 
 const ImageCanvas: React.FC<ImageCanvasProps> = ({
@@ -24,6 +26,7 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
   const [isDrawing, setIsDrawing] = useState(false);
   const [newRect, setNewRect] = useState<Partial<Rectangle> | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
 
   // Load image
   useEffect(() => {
@@ -33,6 +36,8 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
     img.onload = () => {
       console.log('Image loaded successfully:', img.width, 'x', img.height);
       setImage(img);
+      setImageDimensions({ width: img.width, height: img.height });
+      
       // Calculate stage size to fit image while maintaining aspect ratio
       const maxWidth = 800;
       const maxHeight = 600;
@@ -54,6 +59,41 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
     };
     img.src = imageSrc;
   }, [imageSrc]);
+
+  // Coordinate transformation functions
+  const stageToImageCoords = (stageX: number, stageY: number) => {
+    const scaleX = imageDimensions.width / stageSize.width;
+    const scaleY = imageDimensions.height / stageSize.height;
+    return {
+      x: stageX * scaleX,
+      y: stageY * scaleY,
+    };
+  };
+
+  const imageToStageCoords = (imageX: number, imageY: number) => {
+    const scaleX = stageSize.width / imageDimensions.width;
+    const scaleY = stageSize.height / imageDimensions.height;
+    return {
+      x: imageX * scaleX,
+      y: imageY * scaleY,
+    };
+  };
+
+
+
+  const transformRectangleToStageCoords = (rect: Rectangle): Rectangle => {
+    const transformedPos = imageToStageCoords(rect.x, rect.y);
+    const scaleX = stageSize.width / imageDimensions.width;
+    const scaleY = stageSize.height / imageDimensions.height;
+    
+    return {
+      ...rect,
+      x: transformedPos.x,
+      y: transformedPos.y,
+      width: rect.width * scaleX,
+      height: rect.height * scaleY,
+    };
+  };
 
   // Attach transformer to selected rectangle
   useEffect(() => {
@@ -114,14 +154,14 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
     }
   };
 
-  const handleMouseMove = (e: Konva.KonvaEventObject<MouseEvent>) => {
+  const handleMouseMove = (_e: Konva.KonvaEventObject<MouseEvent>) => {
     if (!isDrawing || !newRect) return;
 
     const stage = stageRef.current;
     if (!stage) return;
     
     const pos = stage.getPointerPosition();
-    if (pos) {
+    if (pos && newRect.x !== undefined && newRect.y !== undefined) {
       setNewRect({
         ...newRect,
         width: pos.x - newRect.x,
@@ -134,12 +174,17 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
   const handleMouseUp = () => {
     console.log('Mouse up - isDrawing:', isDrawing, 'newRect:', newRect);
     if (isDrawing && newRect && Math.abs(newRect.width || 0) > 5 && Math.abs(newRect.height || 0) > 5) {
+      // Transform stage coordinates to image coordinates
+      const transformedPos = stageToImageCoords(newRect.x || 0, newRect.y || 0);
+      const scaleX = imageDimensions.width / stageSize.width;
+      const scaleY = imageDimensions.height / stageSize.height;
+      
       const rect: Rectangle = {
         id: `rect_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        x: newRect.x || 0,
-        y: newRect.y || 0,
-        width: Math.abs(newRect.width || 0),
-        height: Math.abs(newRect.height || 0),
+        x: transformedPos.x,
+        y: transformedPos.y,
+        width: Math.abs(newRect.width || 0) * scaleX,
+        height: Math.abs(newRect.height || 0) * scaleY,
         fill: 'rgba(0, 123, 255, 0.2)',
         stroke: '#007bff',
         strokeWidth: 2,
@@ -148,15 +193,15 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
 
       // Adjust coordinates if width/height are negative
       if (newRect.width && newRect.width < 0) {
-        rect.x = newRect.x + newRect.width;
-        rect.width = Math.abs(newRect.width);
+        rect.x = transformedPos.x + (newRect.width * scaleX);
+        rect.width = Math.abs(newRect.width * scaleX);
       }
       if (newRect.height && newRect.height < 0) {
-        rect.y = newRect.y + newRect.height;
-        rect.height = Math.abs(newRect.height);
+        rect.y = transformedPos.y + (newRect.height * scaleY);
+        rect.height = Math.abs(newRect.height * scaleY);
       }
 
-      console.log('Created new rectangle:', rect);
+      console.log('Created new rectangle (image coordinates):', rect);
       onRectanglesChange([...rectangles, rect]);
     } else {
       console.log('Rectangle too small or not drawing, ignoring');
@@ -168,7 +213,27 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
   const updateRect = (id: string, newAttrs: Partial<Rectangle>) => {
     const newRectangles = rectangles.map((rect) => {
       if (rect.id === id) {
-        return { ...rect, ...newAttrs };
+        // Transform stage coordinates to image coordinates if position/size is being updated
+        let transformedAttrs = { ...newAttrs };
+        
+        if ('x' in newAttrs || 'y' in newAttrs || 'width' in newAttrs || 'height' in newAttrs) {
+          const transformedPos = stageToImageCoords(
+            newAttrs.x !== undefined ? newAttrs.x : rect.x,
+            newAttrs.y !== undefined ? newAttrs.y : rect.y
+          );
+          const scaleX = imageDimensions.width / stageSize.width;
+          const scaleY = imageDimensions.height / stageSize.height;
+          
+          transformedAttrs = {
+            ...transformedAttrs,
+            x: transformedPos.x,
+            y: transformedPos.y,
+            width: (newAttrs.width !== undefined ? newAttrs.width : rect.width) * scaleX,
+            height: (newAttrs.height !== undefined ? newAttrs.height : rect.height) * scaleY,
+          };
+        }
+        
+        return { ...rect, ...transformedAttrs };
       }
       return rect;
     });
@@ -296,33 +361,37 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
             />
             
             {/* Render existing rectangles */}
-            {rectangles.map((rect) => (
-              <Rect
-                key={rect.id}
-                id={rect.id}
-                x={rect.x}
-                y={rect.y}
-                width={rect.width}
-                height={rect.height}
-                fill={rect.fill}
-                stroke={rect.stroke}
-                strokeWidth={rect.strokeWidth}
-                draggable={rect.draggable}
-                onClick={handleRectClick}
-                onDragEnd={handleRectDragEnd}
-                onTransform={(e) => {
+            {rectangles.map((rect) => {
+              // Transform image coordinates to stage coordinates for display
+              const stageCoords = transformRectangleToStageCoords(rect);
+              return (
+                <Rect
+                  key={rect.id}
+                  id={rect.id}
+                  x={stageCoords.x}
+                  y={stageCoords.y}
+                  width={stageCoords.width}
+                  height={stageCoords.height}
+                  fill={rect.fill}
+                  stroke={rect.stroke}
+                  strokeWidth={rect.strokeWidth}
+                  draggable={rect.draggable}
+                  onClick={handleRectClick}
+                  onDragEnd={handleRectDragEnd}
+                                  onTransform={(_e) => {
                   console.log('Rect onTransform triggered');
                 }}
-                onTransformEnd={handleRectTransformEnd}
-                onDblClick={handleRectDoubleClick}
-                onMouseDown={(e) => {
-                  console.log('Rect mouse down:', e.target.id());
-                }}
-                onMouseMove={(e) => {
-                  console.log('Rect mouse move:', e.target.id());
-                }}
-              />
-            ))}
+                  onTransformEnd={handleRectTransformEnd}
+                  onDblClick={handleRectDoubleClick}
+                  onMouseDown={(e) => {
+                    console.log('Rect mouse down:', e.target.id());
+                  }}
+                  onMouseMove={(e) => {
+                    console.log('Rect mouse move:', e.target.id());
+                  }}
+                />
+              );
+            })}
             
             {/* Render new rectangle being drawn */}
             {newRect && (
@@ -370,9 +439,9 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
                 // Force update during transform
                 e.target.getLayer()?.batchDraw();
               }}
-              onTransformEnd={(e) => {
-                console.log('Transformer onTransformEnd event triggered');
-              }}
+                              onTransformEnd={(_e) => {
+                  console.log('Transformer onTransformEnd event triggered');
+                }}
             />
           </Layer>
         </Stage>
