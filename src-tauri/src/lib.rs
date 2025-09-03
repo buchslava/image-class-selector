@@ -1,7 +1,7 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::Path;
+
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ExportResult {
@@ -30,17 +30,24 @@ struct Rectangle {
     height: f64,
     fill: String,
     stroke: String,
+    #[serde(rename = "strokeWidth")]
     stroke_width: f64,
     draggable: bool,
+    #[serde(rename = "classId")]
+    class_id: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct YoloExportRequest {
+    #[serde(rename = "imagePath")]
     image_path: String,
     rectangles: Vec<Rectangle>,
+    #[serde(rename = "imageWidth")]
     image_width: u32,
+    #[serde(rename = "imageHeight")]
     image_height: u32,
-    class_id: u32,
+    #[serde(rename = "classId")]
+    class_id: f64,
 }
 
 #[tauri::command]
@@ -95,7 +102,7 @@ fn export_rectangles_to_yolo(request: YoloExportRequest) -> ExportResult {
         println!("YOLO normalized: x_center={:.6}, y_center={:.6}, w={:.6}, h={:.6}", x_center, y_center, w_norm, h_norm);
 
         // Format: class x_center y_center width height
-        let line = format!("{} {:.6} {:.6} {:.6} {:.6}", class_id, x_center, y_center, w_norm, h_norm);
+        let line = format!("{:.0} {:.6} {:.6} {:.6} {:.6}", rect.class_id, x_center, y_center, w_norm, h_norm);
         lines.push(line);
     }
 
@@ -226,7 +233,7 @@ fn read_yolo_annotations(image_path: String, image_width: u32, image_height: u32
         }
 
         // Parse YOLO format: class x_center y_center width height
-        let class_id: u32 = match parts[0].parse() {
+        let class_id: f64 = match parts[0].parse() {
             Ok(id) => id,
             Err(e) => {
                 println!("Invalid class ID on line {}: {}", line_num + 1, e);
@@ -286,6 +293,7 @@ fn read_yolo_annotations(image_path: String, image_width: u32, image_height: u32
             stroke: "#007bff".to_string(),
             stroke_width: 2.0,
             draggable: true,
+            class_id,
         };
 
         rectangles.push(rectangle);

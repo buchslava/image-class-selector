@@ -1,22 +1,24 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Stage, Layer, Rect, Image as KonvaImage, Transformer } from 'react-konva';
+import { Stage, Layer, Rect, Image as KonvaImage, Transformer, Text } from 'react-konva';
 import Konva from 'konva';
 import { Rectangle } from '../types';
 
 interface ImageCanvasProps {
   imageSrc: string;
-  imageName: string;
   rectangles: Rectangle[];
   onRectanglesChange: (rectangles: Rectangle[]) => void;
   originalWidth?: number;
   originalHeight?: number;
+  selectedClassId: number;
+  classes: string[];
 }
 
 const ImageCanvas: React.FC<ImageCanvasProps> = ({
   imageSrc,
-  imageName,
   rectangles,
   onRectanglesChange,
+  selectedClassId,
+  classes,
 }) => {
   const stageRef = useRef<Konva.Stage>(null);
   const layerRef = useRef<Konva.Layer>(null);
@@ -87,6 +89,8 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
       window.removeEventListener('resize', handleResize);
     };
   }, [imageDimensions]);
+
+
 
   // Coordinate transformation functions
   const stageToImageCoords = (stageX: number, stageY: number) => {
@@ -217,6 +221,7 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
         stroke: '#007bff',
         strokeWidth: 2,
         draggable: true,
+        classId: selectedClassId,
       };
 
       // Adjust coordinates if width/height are negative
@@ -401,32 +406,58 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
             {rectangles.map((rect) => {
               // Transform image coordinates to stage coordinates for display
               const stageCoords = transformRectangleToStageCoords(rect);
+
+              console.log('classes:', classes, rect.classId, typeof rect.classId);
+
+              const className = classes[rect.classId] || `${rect.classId || 0}`;
               return (
-                <Rect
-                  key={rect.id}
-                  id={rect.id}
-                  x={stageCoords.x}
-                  y={stageCoords.y}
-                  width={stageCoords.width}
-                  height={stageCoords.height}
-                  fill={rect.fill}
-                  stroke={rect.stroke}
-                  strokeWidth={rect.strokeWidth}
-                  draggable={rect.draggable}
-                  onClick={handleRectClick}
-                  onDragEnd={handleRectDragEnd}
-                                  onTransform={(_e) => {
-                  console.log('Rect onTransform triggered');
-                }}
-                  onTransformEnd={handleRectTransformEnd}
-                  onDblClick={handleRectDoubleClick}
-                  onMouseDown={(e) => {
-                    console.log('Rect mouse down:', e.target.id());
-                  }}
-                  onMouseMove={(e) => {
-                    console.log('Rect mouse move:', e.target.id());
-                  }}
-                />
+                <React.Fragment key={rect.id}>
+                  <Rect
+                    id={rect.id}
+                    x={stageCoords.x}
+                    y={stageCoords.y}
+                    width={stageCoords.width}
+                    height={stageCoords.height}
+                    fill={rect.fill}
+                    stroke={rect.stroke}
+                    strokeWidth={rect.strokeWidth}
+                    draggable={rect.draggable}
+                    onClick={handleRectClick}
+                    onDragEnd={handleRectDragEnd}
+                    onTransform={(_e) => {
+                      console.log('Rect onTransform triggered');
+                    }}
+                    onTransformEnd={handleRectTransformEnd}
+                    onDblClick={handleRectDoubleClick}
+                    onMouseDown={(e) => {
+                      console.log('Rect mouse down:', e.target.id());
+                    }}
+                    onMouseMove={(e) => {
+                      console.log('Rect mouse move:', e.target.id());
+                    }}
+                  />
+                  <Rect
+                    x={stageCoords.x + 6}
+                    y={stageCoords.y + 6}
+                    width={className.length * 8 + 16}
+                    height={20}
+                    fill="rgba(255, 255, 255, 0.9)"
+                    stroke="#000000"
+                    strokeWidth={1}
+                    cornerRadius={3}
+                  />
+                  <Text
+                    x={stageCoords.x + 8}
+                    y={stageCoords.y + 8}
+                    text={className}
+                    fontSize={14}
+                    fill="#000000"
+                    stroke="#ffffff"
+                    strokeWidth={1}
+                    fontStyle="bold"
+                    padding={4}
+                  />
+                </React.Fragment>
               );
             })}
             

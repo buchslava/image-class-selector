@@ -34,17 +34,18 @@ export const saveYOLOTxtFile = async (
       height: rect.height,
       fill: rect.fill,
       stroke: rect.stroke,
-      stroke_width: rect.strokeWidth || 2, // Provide default if missing
+      strokeWidth: rect.strokeWidth || 2, // Serde will rename to stroke_width
       draggable: rect.draggable,
+      classId: rect.classId || 0, // Serde will rename to class_id
     };
   });
 
   const request = {
-    image_path: imagePath,
+    imagePath: imagePath, // Serde will rename to image_path
     rectangles: validatedRectangles,
-    image_width: imageWidth,
-    image_height: imageHeight,
-    class_id: classId,
+    imageWidth: imageWidth, // Serde will rename to image_width
+    imageHeight: imageHeight, // Serde will rename to image_height
+    classId: classId, // Serde will rename to class_id
   };
   
   console.log("Sending request to Rust:", request);
@@ -90,17 +91,18 @@ export const exportAllYOLO = async (
         height: rect.height,
         fill: rect.fill,
         stroke: rect.stroke,
-        stroke_width: rect.strokeWidth || 2, // Provide default if missing
+        strokeWidth: rect.strokeWidth || 2, // Serde will rename to stroke_width
         draggable: rect.draggable,
+        classId: rect.classId || 0, // Serde will rename to class_id
       };
     });
     
     return {
-      image_path: exportData.imagePath,
+      imagePath: exportData.imagePath, // Serde will rename to image_path
       rectangles: validatedRectangles,
-      image_width: exportData.imageWidth,
-      image_height: exportData.imageHeight,
-      class_id: exportData.classId || 0,
+      imageWidth: exportData.imageWidth, // Serde will rename to image_width
+      imageHeight: exportData.imageHeight, // Serde will rename to image_height
+      classId: exportData.classId || 0, // Serde will rename to class_id
     };
   });
   

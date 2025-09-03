@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Layout, Button, Image, Row, Col, Typography, message, Space, Select } from "antd";
 import { FolderOpenOutlined, DeleteOutlined, DownloadOutlined } from "@ant-design/icons";
 import ImageCanvas from "./components/ImageCanvas";
-import { ImageFile, Rectangle, ExportResult, BatchExportResult } from "./types";
+import { ImageFile, Rectangle } from "./types";
 import { exportAllYOLO, loadYOLOAnnotations } from "./utils/yoloExport";
 import "./App.css";
 
@@ -259,7 +259,7 @@ function App() {
         rectangles: rectanglesPerImage[image.path] || [],
         imageWidth: image.originalWidth,
         imageHeight: image.originalHeight,
-        classId: selectedClassId,
+        classId: 0, // This is no longer used, each rectangle has its own classId
       }));
 
       const result = await exportAllYOLO(exports);
@@ -464,11 +464,12 @@ function App() {
               </div>
               <ImageCanvas
                 imageSrc={selectedImage.data}
-                imageName={selectedImage.name}
                 rectangles={rectanglesPerImage[selectedImage.path] || []}
                 onRectanglesChange={handleRectanglesChange}
                 originalWidth={selectedImage.originalWidth}
                 originalHeight={selectedImage.originalHeight}
+                selectedClassId={selectedClassId}
+                classes={classes}
               />
             </div>
           ) : (

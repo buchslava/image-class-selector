@@ -8,6 +8,7 @@ export interface Rectangle {
   stroke: string;
   strokeWidth: number;
   draggable: boolean;
+  classId: number; // Class ID for this rectangle
 }
 
 export interface ImageFile {
