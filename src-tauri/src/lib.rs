@@ -136,6 +136,124 @@ fn export_all_rectangles_to_yolo(requests: Vec<YoloExportRequest>) -> Result<Str
     }
 }
 
+#[tauri::command]
+fn read_yolo_annotations(image_path: String, image_width: u32, image_height: u32) -> Result<Vec<Rectangle>, String> {
+    println!("=== READING YOLO ANNOTATIONS ===");
+    println!("Image path: {}", image_path);
+    println!("Image dimensions: {}x{}", image_width, image_height);
+    
+    // Convert image path to txt path
+    let txt_path = if image_path.ends_with(".jpg") || image_path.ends_with(".jpeg") {
+        image_path.replace(".jpg", ".txt").replace(".jpeg", ".txt")
+    } else if image_path.ends_with(".png") {
+        image_path.replace(".png", ".txt")
+    } else {
+        return Err("Unsupported image format".to_string());
+    };
+
+    println!("Looking for annotation file: {}", txt_path);
+    
+    // Check if the txt file exists
+    if !std::path::Path::new(&txt_path).exists() {
+        println!("Annotation file does not exist: {}", txt_path);
+        return Ok(Vec::new()); // Return empty vector if no annotations exist
+    }
+
+    // Read the txt file
+    let content = match fs::read_to_string(&txt_path) {
+        Ok(content) => content,
+        Err(e) => {
+            println!("Failed to read annotation file: {}", e);
+            return Err(format!("Failed to read annotation file: {}", e));
+        }
+    };
+
+    println!("Read content: {}", content);
+
+    // Parse YOLO format lines
+    let mut rectangles = Vec::new();
+    for (line_num, line) in content.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() != 5 {
+            println!("Invalid line {}: expected 5 parts, got {}", line_num + 1, parts.len());
+            continue;
+        }
+
+        // Parse YOLO format: class x_center y_center width height
+        let class_id: u32 = match parts[0].parse() {
+            Ok(id) => id,
+            Err(e) => {
+                println!("Invalid class ID on line {}: {}", line_num + 1, e);
+                continue;
+            }
+        };
+
+        let x_center: f64 = match parts[1].parse() {
+            Ok(x) => x,
+            Err(e) => {
+                println!("Invalid x_center on line {}: {}", line_num + 1, e);
+                continue;
+            }
+        };
+
+        let y_center: f64 = match parts[2].parse() {
+            Ok(y) => y,
+            Err(e) => {
+                println!("Invalid y_center on line {}: {}", line_num + 1, e);
+                continue;
+            }
+        };
+
+        let w_norm: f64 = match parts[3].parse() {
+            Ok(w) => w,
+            Err(e) => {
+                println!("Invalid width on line {}: {}", line_num + 1, e);
+                continue;
+            }
+        };
+
+        let h_norm: f64 = match parts[4].parse() {
+            Ok(h) => h,
+            Err(e) => {
+                println!("Invalid height on line {}: {}", line_num + 1, e);
+                continue;
+            }
+        };
+
+        // Convert normalized coordinates back to pixel coordinates
+        let x = (x_center - w_norm / 2.0) * image_width as f64;
+        let y = (y_center - h_norm / 2.0) * image_height as f64;
+        let width = w_norm * image_width as f64;
+        let height = h_norm * image_height as f64;
+
+        println!("Line {}: class={}, x_center={}, y_center={}, w={}, h={}", 
+                line_num + 1, class_id, x_center, y_center, w_norm, h_norm);
+        println!("Converted to: x={}, y={}, width={}, height={}", x, y, width, height);
+
+        let rectangle = Rectangle {
+            id: format!("loaded_rect_{}", line_num),
+            x,
+            y,
+            width,
+            height,
+            fill: "rgba(0, 123, 255, 0.2)".to_string(),
+            stroke: "#007bff".to_string(),
+            stroke_width: 2.0,
+            draggable: true,
+        };
+
+        rectangles.push(rectangle);
+    }
+
+    println!("=== READ {} RECTANGLES ===", rectangles.len());
+    Ok(rectangles)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -145,7 +263,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             export_rectangles_to_yolo,
-            export_all_rectangles_to_yolo
+            export_all_rectangles_to_yolo,
+            read_yolo_annotations
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

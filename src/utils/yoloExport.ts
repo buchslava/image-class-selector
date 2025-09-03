@@ -97,3 +97,33 @@ export const exportAllYOLO = async (
     throw error;
   }
 };
+
+export const loadYOLOAnnotations = async (
+  imagePath: string,
+  imageWidth: number,
+  imageHeight: number
+): Promise<Rectangle[]> => {
+  console.log("=== TypeScript Load YOLO Annotations Start ===");
+  console.log("Image path:", imagePath);
+  console.log("Image dimensions:", imageWidth, "x", imageHeight);
+  
+  // Use Rust function for Tauri environment
+  const { invoke } = await import('@tauri-apps/api/core');
+  
+  try {
+    const rectangles = await invoke('read_yolo_annotations', {
+      imagePath: imagePath,
+      imageWidth: imageWidth,
+      imageHeight: imageHeight,
+    });
+    
+    console.log("Rust returned rectangles:", rectangles);
+    console.log("=== TypeScript Load YOLO Annotations Success ===");
+    return rectangles as Rectangle[];
+  } catch (error) {
+    console.error("=== TypeScript Load YOLO Annotations Error ===");
+    console.error("Error calling Rust function:", error);
+    // Return empty array if no annotations exist or error occurs
+    return [];
+  }
+};

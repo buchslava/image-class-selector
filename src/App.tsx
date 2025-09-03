@@ -3,7 +3,7 @@ import { Layout, Button, Image, Row, Col, Typography, message, Space } from "ant
 import { FolderOpenOutlined, DeleteOutlined, DownloadOutlined } from "@ant-design/icons";
 import ImageCanvas from "./components/ImageCanvas";
 import { ImageFile, Rectangle, ExportData } from "./types";
-import { saveYOLOTxtFile, getYOLOTxtPath, exportAllYOLO } from "./utils/yoloExport";
+import { saveYOLOTxtFile, getYOLOTxtPath, exportAllYOLO, loadYOLOAnnotations } from "./utils/yoloExport";
 import "./App.css";
 
 const { Header, Content, Sider } = Layout;
@@ -112,11 +112,51 @@ function App() {
           (img): img is ImageFile => img !== null && img.originalWidth !== undefined && img.originalHeight !== undefined
         );
 
+        // Load existing annotations for each image
+        const annotationsPromises = loadedImages.map(async (image) => {
+          try {
+            console.log(`Attempting to load annotations for: ${image.path}`);
+            const rectangles = await loadYOLOAnnotations(
+              image.path,
+              image.originalWidth,
+              image.originalHeight
+            );
+            console.log(`Loaded ${rectangles.length} rectangles for ${image.path}:`, rectangles);
+            return { imagePath: image.path, rectangles };
+          } catch (error) {
+            console.error(`Error loading annotations for ${image.path}:`, error);
+            return { imagePath: image.path, rectangles: [] };
+          }
+        });
+
+        const annotationsResults = await Promise.all(annotationsPromises);
+        
+        // Create rectanglesPerImage state
+        const initialRectanglesPerImage: Record<string, Rectangle[]> = {};
+        annotationsResults.forEach(({ imagePath, rectangles }) => {
+          if (rectangles.length > 0) {
+            initialRectanglesPerImage[imagePath] = rectangles;
+            console.log(`Setting ${rectangles.length} rectangles for ${imagePath}`);
+          } else {
+            console.log(`No rectangles found for ${imagePath}`);
+          }
+        });
+
+        console.log("Final rectanglesPerImage state:", initialRectanglesPerImage);
+
         setImages(loadedImages);
+        setRectanglesPerImage(initialRectanglesPerImage);
+        
         if (loadedImages.length > 0) {
           setSelectedImage(loadedImages[0]);
         }
-        message.success(`Loaded ${loadedImages.length} images from folder`);
+        
+        const totalAnnotations = Object.values(initialRectanglesPerImage).reduce(
+          (sum, rectangles) => sum + rectangles.length, 0
+        );
+        
+        message.success(`Loaded ${loadedImages.length} images and ${totalAnnotations} existing annotations from folder`);
+
       }
     } catch (error) {
       console.error("Error loading images:", error);
