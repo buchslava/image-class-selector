@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Tauri
+src-tauri/target/
+
+# Generated files
+*.min.js
+*.min.css
+
+# Package files
+package-lock.json
+Cargo.lock
+
+# Config files that shouldn't be formatted
+*.config.js

@@ -19,21 +19,6 @@ export interface ImageFile {
   originalHeight: number; // Original image height
 }
 
-export interface ExportData {
-  imageName: string;
-  imagePath: string;
-  rectangles: Rectangle[];
-  exportDate: string;
-}
-
-export interface YOLORectangle {
-  classId: number;
-  xCenter: number; // normalized (0-1)
-  yCenter: number; // normalized (0-1)
-  width: number; // normalized (0-1)
-  height: number; // normalized (0-1)
-}
-
 export interface ExportResult {
   success: boolean;
   message: string;
