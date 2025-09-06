@@ -16,6 +16,8 @@ function App() {
   const [rectanglesPerImage, setRectanglesPerImage] = useState<Record<string, Rectangle[]>>({});
   const [classes, setClasses] = useState<string[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<number>(0);
+  const [clearSelection, setClearSelection] = useState<boolean>(false);
+  const [lastLoadedFolderPath, setLastLoadedFolderPath] = useState<string | null>(null);
 
   // Helper function to get image dimensions from data URL
   const getImageDimensions = (dataUrl: string): Promise<{ width: number; height: number }> => {
@@ -26,6 +28,132 @@ function App() {
       };
       img.src = dataUrl;
     });
+  };
+
+  // Helper function to load images from a folder path
+  const loadImagesFromFolder = async (folderPath: string) => {
+    try {
+      const { readFile, readDir } = await import("@tauri-apps/plugin-fs");
+      
+      console.log("Loading images from folder:", folderPath);
+      
+      // Recursively find all image files
+      const imageFiles: string[] = [];
+      
+      const findImagesRecursively = async (dirPath: string): Promise<void> => {
+        try {
+          const entries = await readDir(dirPath);
+          
+          for (const entry of entries) {
+            const fullPath = `${dirPath}/${entry.name}`;
+            
+            // Check if it's a directory by trying to read it
+            try {
+              await readDir(fullPath);
+              // If successful, it's a directory, recurse into it
+              await findImagesRecursively(fullPath);
+            } catch {
+              // If failed, it's a file, check if it's an image
+              const extension = entry.name.split('.').pop()?.toLowerCase();
+              if (extension === 'jpg' || extension === 'jpeg' || extension === 'png') {
+                imageFiles.push(fullPath);
+              }
+            }
+          }
+        } catch (error) {
+          console.error(`Error reading directory ${dirPath}:`, error);
+        }
+      };
+      
+      // Start recursive search
+      await findImagesRecursively(folderPath);
+      console.log(`Found ${imageFiles.length} image files`);
+      
+      if (imageFiles.length === 0) {
+        messageApi.warning("No image files found in the selected folder");
+        return;
+      }
+      
+      // Load all found images
+      const imagePromises = imageFiles.map(async (filePath) => {
+        try {
+          // Read the file using Tauri's file system API
+          const fileData = await readFile(filePath);
+          
+          // Convert to base64 data URL
+          const base64 = btoa(String.fromCharCode(...fileData));
+          const extension = filePath.split('.').pop()?.toLowerCase() || 'jpg';
+          const mimeType = extension === 'png' ? 'image/png' : 'image/jpeg';
+          const dataUrl = `data:${mimeType};base64,${base64}`;
+
+          // Get image dimensions
+          const dimensions = await getImageDimensions(dataUrl);
+
+          return {
+            path: filePath,
+            name: filePath.split('/').pop() || 'Unknown',
+            data: dataUrl,
+            originalWidth: dimensions.width,
+            originalHeight: dimensions.height,
+          };
+        } catch (error) {
+          console.error(`Error loading image ${filePath}:`, error);
+          return null;
+        }
+      });
+
+      const loadedImages = (await Promise.all(imagePromises)).filter(
+        (img): img is ImageFile => img !== null && img.originalWidth !== undefined && img.originalHeight !== undefined
+      );
+
+      // Load existing annotations for each image
+      const annotationsPromises = loadedImages.map(async (image) => {
+        try {
+          console.log(`Attempting to load annotations for: ${image.path}`);
+          const rectangles = await loadYOLOAnnotations(
+            image.path,
+            image.originalWidth,
+            image.originalHeight
+          );
+          console.log(`Loaded ${rectangles.length} rectangles for ${image.path}:`, rectangles);
+          return { imagePath: image.path, rectangles };
+        } catch (error) {
+          console.error(`Error loading annotations for ${image.path}:`, error);
+          return { imagePath: image.path, rectangles: [] };
+        }
+      });
+
+      const annotationsResults = await Promise.all(annotationsPromises);
+      
+      // Create rectanglesPerImage state
+      const initialRectanglesPerImage: Record<string, Rectangle[]> = {};
+      annotationsResults.forEach(({ imagePath, rectangles }) => {
+        if (rectangles.length > 0) {
+          initialRectanglesPerImage[imagePath] = rectangles;
+          console.log(`Setting ${rectangles.length} rectangles for ${imagePath}`);
+        } else {
+          console.log(`No rectangles found for ${imagePath}`);
+        }
+      });
+
+      console.log("Final rectanglesPerImage state:", initialRectanglesPerImage);
+
+      setImages(loadedImages);
+      setRectanglesPerImage(initialRectanglesPerImage);
+      
+      if (loadedImages.length > 0) {
+        setSelectedImage(loadedImages[0]);
+      }
+      
+      const totalAnnotations = Object.values(initialRectanglesPerImage).reduce(
+        (sum, rectangles) => sum + rectangles.length, 0
+      );
+      
+      return { loadedImages, totalAnnotations };
+    } catch (error) {
+      console.error("Error loading images from folder:", error);
+      throw error;
+    }
   };
 
   const loadClasses = async () => {
@@ -64,7 +192,25 @@ function App() {
           
           setClasses(classNames);
           setSelectedClassId(0); // Reset to first class
-          messageApi.success(`Loaded ${classNames.length} classes: ${classNames.join(', ')}`);
+          
+          // If images were already loaded, reload them to refresh annotations with new classes
+          if (lastLoadedFolderPath && images.length > 0) {
+            messageApi.info("Reloading images to refresh annotations with new classes...");
+            try {
+              const result = await loadImagesFromFolder(lastLoadedFolderPath);
+              if (result) {
+                messageApi.success(`Loaded ${classNames.length} classes and reloaded ${result.loadedImages.length} images with ${result.totalAnnotations} annotations`);
+              } else {
+                messageApi.success(`Loaded ${classNames.length} classes: ${classNames.join(', ')}`);
+              }
+            } catch (error) {
+              console.error("Error reloading images:", error);
+              messageApi.success(`Loaded ${classNames.length} classes: ${classNames.join(', ')}`);
+              messageApi.warning("Classes loaded but failed to reload images. Please reload images manually.");
+            }
+          } else {
+            messageApi.success(`Loaded ${classNames.length} classes: ${classNames.join(', ')}`);
+          }
           
         } catch (error) {
           console.error("Error reading file:", error);
@@ -80,7 +226,6 @@ function App() {
   const loadImages = async () => {
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
-      const { readFile, readDir } = await import("@tauri-apps/plugin-fs");
       
       console.log("Opening folder dialog...");
       const selected = await open({
@@ -94,124 +239,19 @@ function App() {
         const folderPath = selected;
         console.log("Selected folder:", folderPath);
         
-        // Recursively find all image files
-        const imageFiles: string[] = [];
+        // Store the folder path for potential reloading when classes are loaded
+        setLastLoadedFolderPath(folderPath);
         
-        const findImagesRecursively = async (dirPath: string): Promise<void> => {
-          try {
-            const entries = await readDir(dirPath);
-            
-            for (const entry of entries) {
-              const fullPath = `${dirPath}/${entry.name}`;
-              
-              // Check if it's a directory by trying to read it
-              try {
-                await readDir(fullPath);
-                // If successful, it's a directory, recurse into it
-                await findImagesRecursively(fullPath);
-              } catch {
-                // If failed, it's a file, check if it's an image
-                const extension = entry.name.split('.').pop()?.toLowerCase();
-                if (extension === 'jpg' || extension === 'jpeg' || extension === 'png') {
-                  imageFiles.push(fullPath);
-                }
-              }
-            }
-          } catch (error) {
-            console.error(`Error reading directory ${dirPath}:`, error);
-          }
-        };
+        // Load images using the helper function
+        const result = await loadImagesFromFolder(folderPath);
         
-        // Start recursive search
-        await findImagesRecursively(folderPath);
-        console.log(`Found ${imageFiles.length} image files`);
-        
-        if (imageFiles.length === 0) {
-          message.warning("No image files found in the selected folder");
-          return;
+        if (result) {
+          messageApi.success(`Loaded ${result.loadedImages.length} images and ${result.totalAnnotations} existing annotations from folder`);
         }
-        
-        // Load all found images
-        const imagePromises = imageFiles.map(async (filePath) => {
-          try {
-            // Read the file using Tauri's file system API
-            const fileData = await readFile(filePath);
-            
-            // Convert to base64 data URL
-            const base64 = btoa(String.fromCharCode(...fileData));
-            const extension = filePath.split('.').pop()?.toLowerCase() || 'jpg';
-            const mimeType = extension === 'png' ? 'image/png' : 'image/jpeg';
-            const dataUrl = `data:${mimeType};base64,${base64}`;
-
-            // Get image dimensions
-            const dimensions = await getImageDimensions(dataUrl);
-
-            return {
-              path: filePath,
-              name: filePath.split('/').pop() || 'Unknown',
-              data: dataUrl,
-              originalWidth: dimensions.width,
-              originalHeight: dimensions.height,
-            };
-          } catch (error) {
-            console.error(`Error loading image ${filePath}:`, error);
-            return null;
-          }
-        });
-
-        const loadedImages = (await Promise.all(imagePromises)).filter(
-          (img): img is ImageFile => img !== null && img.originalWidth !== undefined && img.originalHeight !== undefined
-        );
-
-        // Load existing annotations for each image
-        const annotationsPromises = loadedImages.map(async (image) => {
-          try {
-            console.log(`Attempting to load annotations for: ${image.path}`);
-            const rectangles = await loadYOLOAnnotations(
-              image.path,
-              image.originalWidth,
-              image.originalHeight
-            );
-            console.log(`Loaded ${rectangles.length} rectangles for ${image.path}:`, rectangles);
-            return { imagePath: image.path, rectangles };
-          } catch (error) {
-            console.error(`Error loading annotations for ${image.path}:`, error);
-            return { imagePath: image.path, rectangles: [] };
-          }
-        });
-
-        const annotationsResults = await Promise.all(annotationsPromises);
-        
-        // Create rectanglesPerImage state
-        const initialRectanglesPerImage: Record<string, Rectangle[]> = {};
-        annotationsResults.forEach(({ imagePath, rectangles }) => {
-          if (rectangles.length > 0) {
-            initialRectanglesPerImage[imagePath] = rectangles;
-            console.log(`Setting ${rectangles.length} rectangles for ${imagePath}`);
-          } else {
-            console.log(`No rectangles found for ${imagePath}`);
-          }
-        });
-
-        console.log("Final rectanglesPerImage state:", initialRectanglesPerImage);
-
-        setImages(loadedImages);
-        setRectanglesPerImage(initialRectanglesPerImage);
-        
-        if (loadedImages.length > 0) {
-          setSelectedImage(loadedImages[0]);
-        }
-        
-        const totalAnnotations = Object.values(initialRectanglesPerImage).reduce(
-          (sum, rectangles) => sum + rectangles.length, 0
-        );
-        
-        message.success(`Loaded ${loadedImages.length} images and ${totalAnnotations} existing annotations from folder`);
-
       }
     } catch (error) {
       console.error("Error loading images:", error);
-      message.error("Failed to load images");
+      messageApi.error("Failed to load images");
     }
   };
 
@@ -331,7 +371,12 @@ function App() {
                         transition: "all 0.3s",
                         position: "relative",
                       }}
-                      onClick={() => setSelectedImage(image)}
+                      onClick={() => {
+                        setSelectedImage(image);
+                        setClearSelection(true);
+                        // Reset clearSelection after triggering it
+                        setTimeout(() => setClearSelection(false), 0);
+                      }}
                     >
                       <Image
                         src={image.data}
@@ -429,7 +474,7 @@ function App() {
                   >
                     {classes.map((className, index) => (
                       <Select.Option key={index} value={index}>
-                        {className} (ID: {index})
+                        {className}
                       </Select.Option>
                     ))}
                   </Select>
@@ -470,6 +515,7 @@ function App() {
                 originalHeight={selectedImage.originalHeight}
                 selectedClassId={selectedClassId}
                 classes={classes}
+                clearSelection={clearSelection}
               />
             </div>
           ) : (

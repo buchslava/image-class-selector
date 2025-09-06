@@ -11,6 +11,7 @@ interface ImageCanvasProps {
   originalHeight?: number;
   selectedClassId: number;
   classes: string[];
+  clearSelection?: boolean;
 }
 
 const ImageCanvas: React.FC<ImageCanvasProps> = ({
@@ -19,6 +20,7 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
   onRectanglesChange,
   selectedClassId,
   classes,
+  clearSelection,
 }) => {
   const stageRef = useRef<Konva.Stage>(null);
   const layerRef = useRef<Konva.Layer>(null);
@@ -89,6 +91,13 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
       window.removeEventListener('resize', handleResize);
     };
   }, [imageDimensions]);
+
+  // Clear selection when clearSelection prop changes
+  useEffect(() => {
+    if (clearSelection) {
+      setSelectedId(null);
+    }
+  }, [clearSelection]);
 
 
 
@@ -279,6 +288,9 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
     const rectId = e.target.id();
     console.log('Rectangle clicked:', rectId);
     setSelectedId(rectId);
+    
+    // Update the rectangle's class to match the currently selected class
+    updateRect(rectId, { classId: selectedClassId });
     
     // Force transformer update immediately
     setTimeout(() => {
