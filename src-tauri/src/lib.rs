@@ -235,6 +235,61 @@ pub fn run() {
             export_all_rectangles_to_yolo,
             read_yolo_annotations
         ])
+        .setup(|app| {
+            use tauri::menu::{MenuBuilder, MenuItem, PredefinedMenuItem, SubmenuBuilder};
+            use tauri::Emitter;
+
+            // Create menu items with IDs
+            let select_folder_item =
+                MenuItem::with_id(app, "select_folder", "Select Folder", true, Some("CmdOrCtrl+O"))
+                    .unwrap();
+
+            let load_classes_item =
+                MenuItem::with_id(app, "load_classes", "Load Classes", true, Some("CmdOrCtrl+L"))
+                    .unwrap();
+
+            // Create separator
+            let separator = PredefinedMenuItem::separator(app)?;
+
+            // Create Exit item
+            let quit_item = PredefinedMenuItem::quit(app, Some("Quit"))?;
+
+            // Create File submenu
+            let file_submenu = SubmenuBuilder::new(app, "File")
+                .item(&select_folder_item)
+                .item(&load_classes_item)
+                .item(&separator)
+                .item(&quit_item)
+                .build()?;
+
+            // Create main menu with File submenu
+            let menu = MenuBuilder::new(app).items(&[&file_submenu]).build()?;
+
+            // Set the menu
+            app.set_menu(menu)?;
+
+            // Handle menu events
+            app.on_menu_event(move |_app_handle, event| {
+                println!("Menu event triggered: {:?}", event.id());
+                match event.id().0.as_str() {
+                    "select_folder" => {
+                        println!("Select folder menu item clicked");
+                        // Emit event to frontend
+                        let _ = _app_handle.emit("menu-select-folder", ());
+                    }
+                    "load_classes" => {
+                        println!("Load classes menu item clicked");
+                        // Emit event to frontend
+                        let _ = _app_handle.emit("menu-load-classes", ());
+                    }
+                    _ => {
+                        println!("Unknown menu item clicked: {:?}", event.id());
+                    }
+                }
+            });
+
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "image-class-selector",
+  "productName": "Image Class Selector",
   "version": "0.1.0",
   "identifier": "com.slava.image-class-selector",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "image-class-selector",
+        "title": "Image Class Selector",
         "width": 1200,
         "height": 800,
         "center": true,

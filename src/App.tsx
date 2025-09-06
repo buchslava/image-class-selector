@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Layout, Button, Image, Row, Col, Typography, message, Space, Select } from 'antd';
 import { FolderOpenOutlined, DeleteOutlined, DownloadOutlined } from '@ant-design/icons';
 import ImageCanvas from './components/ImageCanvas';
 import { ImageFile, Rectangle } from './types';
 import { exportAllYOLO, loadYOLOAnnotations } from './utils/yoloExport';
+import { listen } from '@tauri-apps/api/event';
 import './App.css';
 
 const { Content, Sider } = Layout;
@@ -18,6 +19,28 @@ function App() {
   const [selectedClassId, setSelectedClassId] = useState<number>(0);
   const [clearSelection, setClearSelection] = useState<boolean>(false);
   const [lastLoadedFolderPath, setLastLoadedFolderPath] = useState<string | null>(null);
+
+  // Listen for menu events
+  useEffect(() => {
+    const setupMenuListeners = async () => {
+      const unlistenSelectFolder = await listen('menu-select-folder', () => {
+        console.log('Menu event received: Select Folder');
+        loadImages();
+      });
+
+      const unlistenLoadClasses = await listen('menu-load-classes', () => {
+        console.log('Menu event received: Load Classes');
+        loadClasses();
+      });
+
+      return () => {
+        unlistenSelectFolder();
+        unlistenLoadClasses();
+      };
+    };
+
+    setupMenuListeners();
+  }, []);
 
   // Helper function to get image dimensions from data URL
   const getImageDimensions = (dataUrl: string): Promise<{ width: number; height: number }> => {
