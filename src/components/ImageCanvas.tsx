@@ -31,6 +31,7 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
   const [newRect, setNewRect] = useState<Partial<Rectangle> | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
+  const [isDragging, setIsDragging] = useState(false);
 
   // Calculate stage size based on available space and image dimensions
   const calculateStageSize = (imgWidth: number, imgHeight: number) => {
@@ -148,8 +149,8 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
 
     const pos = stage.getPointerPosition();
 
-    // Start drawing if clicking on the stage or background (not on existing rectangles)
-    if (e.target === stage || e.target.getClassName() === 'Rect') {
+    // Only start drawing if clicking on the stage or background rectangle (not on existing rectangles or transformer)
+    if (e.target === stage || e.target.id() === 'background') {
       setSelectedId(null);
       if (pos) {
         setIsDrawing(true);
@@ -164,7 +165,7 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
   };
 
   const handleMouseMove = () => {
-    if (!isDrawing || !newRect) return;
+    if (!isDrawing || !newRect || isDragging) return;
 
     const stage = stageRef.current;
     if (!stage) return;
@@ -183,6 +184,7 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
     if (
       isDrawing &&
       newRect &&
+      !isDragging &&
       Math.abs(newRect.width || 0) > 5 &&
       Math.abs(newRect.height || 0) > 5
     ) {
@@ -222,21 +224,16 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
   const updateRect = (id: string, newAttrs: Partial<Rectangle>) => {
     const newRectangles = rectangles.map(rect => {
       if (rect.id === id) {
-        // Transform stage coordinates to image coordinates if position/size is being updated
+        // Only transform coordinates if we're updating size (width/height)
+        // For position updates (x/y), the coordinates are already in image space
         let transformedAttrs = { ...newAttrs };
 
-        if ('x' in newAttrs || 'y' in newAttrs || 'width' in newAttrs || 'height' in newAttrs) {
-          const transformedPos = stageToImageCoords(
-            newAttrs.x !== undefined ? newAttrs.x : rect.x,
-            newAttrs.y !== undefined ? newAttrs.y : rect.y
-          );
+        if ('width' in newAttrs || 'height' in newAttrs) {
           const scaleX = imageDimensions.width / stageSize.width;
           const scaleY = imageDimensions.height / stageSize.height;
 
           transformedAttrs = {
             ...transformedAttrs,
-            x: transformedPos.x,
-            y: transformedPos.y,
             width: (newAttrs.width !== undefined ? newAttrs.width : rect.width) * scaleX,
             height: (newAttrs.height !== undefined ? newAttrs.height : rect.height) * scaleY,
           };
@@ -271,12 +268,26 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
     }, 0);
   };
 
+  const handleRectDragStart = () => {
+    setIsDragging(true);
+  };
+
   const handleRectDragEnd = (e: Konva.KonvaEventObject<DragEvent>) => {
     const rectId = e.target.id();
+    const node = e.target;
+
+    // Transform stage coordinates to image coordinates for position
+    const transformedPos = stageToImageCoords(node.x(), node.y());
+
     updateRect(rectId, {
-      x: e.target.x(),
-      y: e.target.y(),
+      x: transformedPos.x,
+      y: transformedPos.y,
     });
+    setIsDragging(false);
+  };
+
+  const handleRectTransformStart = () => {
+    setIsDragging(true);
   };
 
   const handleRectTransformEnd = (e: Konva.KonvaEventObject<Event>) => {
@@ -291,6 +302,7 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
     });
     node.scaleX(1);
     node.scaleY(1);
+    setIsDragging(false);
   };
 
   const handleRectDoubleClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -339,7 +351,8 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onClick={e => {
-            if (e.target === stageRef.current) {
+            // Deselect if clicking on stage or background rectangle
+            if (e.target === stageRef.current || e.target.id() === 'background') {
               setSelectedId(null);
             }
           }}
@@ -350,6 +363,7 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
 
             {/* Invisible background rectangle to catch clicks */}
             <Rect
+              id="background"
               x={0}
               y={0}
               width={stageSize.width}
@@ -374,7 +388,9 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
                     strokeWidth={rect.strokeWidth}
                     draggable={rect.draggable}
                     onClick={handleRectClick}
+                    onDragStart={handleRectDragStart}
                     onDragEnd={handleRectDragEnd}
+                    onTransformStart={handleRectTransformStart}
                     onTransformEnd={handleRectTransformEnd}
                     onDblClick={handleRectDoubleClick}
                   />
@@ -438,9 +454,13 @@ const ImageCanvas: React.FC<ImageCanvasProps> = ({
               ignoreStroke={false}
               onMouseDown={e => {
                 e.cancelBubble = true;
+                setIsDragging(true);
               }}
               onTransform={e => {
                 e.target.getLayer()?.batchDraw();
+              }}
+              onTransformEnd={() => {
+                setIsDragging(false);
               }}
             />
           </Layer>
