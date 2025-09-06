@@ -1,0 +1,15 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Simple rectangular icon design matching the PNG icons -->
+  
+  <!-- White background -->
+  <rect width="512" height="512" fill="#ffffff"/>
+  
+  <!-- Rectangle 1 - Blue (wider, shorter) -->
+  <rect x="51" y="192" width="179" height="128" fill="#007BFF" stroke="#0066CC" stroke-width="4" rx="8"/>
+  
+  <!-- Rectangle 2 - Orange (narrower, taller) -->
+  <rect x="282" y="166" width="128" height="179" fill="#FF7B00" stroke="#CC6600" stroke-width="4" rx="8"/>
+  
+  <!-- Subtle border -->
+  <rect x="2" y="2" width="508" height="508" fill="none" stroke="#e0e0e0" stroke-width="2" rx="16"/>
+</svg>
